@@ -1,0 +1,87 @@
+---
+- name: Install Clickhouse
+  hosts: clickhouse-01
+  become: true
+
+  tasks:
+    - name: Install Required Python Modules
+      package:
+        name: dnf
+        state: present
+
+    - name: Gather facts
+      setup:
+
+    - name: Get clickhouse distrib
+      get_url:
+        url: "https://packages.clickhouse.com/rpm/lts/clickhouse-client-21.3.20.1-2.noarch.rpm"
+        dest: "./clickhouse-client-21.3.20.1-2.noarch.rpm"
+      retries: 3
+      delay: 10
+
+    - name: Get clickhouse distrib
+      get_url:
+        url: "https://packages.clickhouse.com/rpm/lts/clickhouse-server-22.3.7.28.noarch.rpm"
+        dest: "./clickhouse-server-22.3.7.28.noarch.rpm"
+      retries: 3
+      delay: 10
+
+    - name: Get clickhouse distrib
+      get_url:
+        url: "https://packages.clickhouse.com/rpm/lts/clickhouse-common-static-22.8.18.31.x86_64.rpm"
+        dest: "./clickhouse-common-static-22.8.18.31.x86_64.rpm"
+      retries: 3
+      delay: 10
+
+    - name: Install ClickHouse client
+      ansible.builtin.command: "dpkg -i ./clickhouse-client-21.3.20.1-2.noarch.rpm"
+      register: install_client
+      failed_when: install_client.rc not in [0, 1]
+
+    - name: Install ClickHouse server
+      ansible.builtin.command: "dpkg -i ./clickhouse-server-22.3.7.28.noarch.rpm"
+      register: install_server
+      failed_when: install_server.rc not in [0, 1]
+
+    - name: Install ClickHouse common static
+      ansible.builtin.command: "dpkg -i ./clickhouse-common-static-22.8.18.31.x86_64.rpm"
+      register: install_common_static
+      failed_when: install_common_static.rc not in [0, 1]
+
+    - name: Fix missing dependencies
+      ansible.builtin.command: "apt-get install -f -y"
+
+- name: Install and configure Vector
+  hosts: vector
+  become: true
+  handlers:
+    - name: Restart vector service
+      ansible.builtin.service:
+        name: vector
+        state: restarted
+
+  tasks:
+    - name: Get vector distrib
+      get_url:
+        url: "https://packages.timber.io/vector/0.44.0/vector_0.44.0-1_amd64.deb"
+        dest: "./vector_0.44.0-1_amd64.deb"
+      retries: 3
+      delay: 10
+
+    - name: Install vector
+      ansible.builtin.apt:
+        deb: "./vector_0.44.0-1_amd64.deb"
+        state: present
+
+    - name: Deploy Vector configuration
+      become: true
+      ansible.builtin.template:
+        src: templates/vector.yml.j2
+        dest: /etc/vector/vector.toml
+      notify: Restart vector service
+
+    - name: Start vector service
+      become: true
+      ansible.builtin.service:
+        name: vector
+        state: started
